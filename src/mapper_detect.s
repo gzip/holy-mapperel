@@ -61,6 +61,31 @@ MIRRPROBE_HINVERT = %1100  ; used by TxSROM detection
   lda #A53_CHRBANK
   sta A53_SELECT
 
+  ; Check for 4-screen mirroring by writing unique values to all 4 nametables
+  jsr test_4screen_mirroring
+  bcc not_4screen
+  lda #'4'
+  sta mirror_type
+  jmp is_4screen
+
+not_4screen:
+  ; Not 4-screen. Probe initial layout.
+  jsr write_mirror_probe_vals
+  jsr read_mirror_probe_vals
+  cmp #MIRRPROBE_V
+  bne not_init_v
+  lda #'V'
+  bne save_init_mirr
+not_init_v:
+  cmp #MIRRPROBE_H
+  bne not_init_h
+  lda #'H'
+  bne save_init_mirr
+not_init_h:
+  lda #'1'
+save_init_mirr:
+  sta mirror_type
+
   ; Now test for each mapper by how it handles nametable mirroring
   ; MMC1 first
   lda #MMC1_PRG16K_FIXHI|MMC1_MIRRV|MMC1_CHR8K
@@ -87,7 +112,6 @@ MIRRPROBE_HINVERT = %1100  ; used by TxSROM detection
   jmp finish_init_mmc1
   
 not_mmc1:
-
   ; Detect FME-7 and MMC3 at the same time.  The FME-7 data port is
   ; at the same address as the MMC3 mirroring port, and the same
   ; values (0=V 1=H) work in both.
@@ -129,7 +153,6 @@ is_mmc3:
   lda #MAPPER_MMC3
   rts
 not_fme7_mmc3:
-
   ; Look for TLSROM by setting flipped-vertical mirroring, writing
   ; probe values, and reading them back as normal vertical mirroring
   ldx #0
@@ -172,7 +195,6 @@ not_tlsrom:
   lda #MAPPER_MMC2
   jmp narrow_mmc2
 not_mmc2_mmc4:
-
   ; Detect Action 53 through the same sequence as MMC1, just written
   ; to a different port
   lda #$80
@@ -201,7 +223,6 @@ not_mmc2_mmc4:
   lda #MAPPER_A53
   rts
 not_a53:
-
   ; Finally, detect AOROM (0=single 0 16=single 1), Holy Diver
   ; (8=vert 0=horz), and fixed.  Write to nametables in a sequence
   ; that guarantees that CIRAM $000 = $00 and CIRAM $400 = $01.
@@ -246,12 +267,10 @@ is_aorom:
   lda #MAPPER_AOROM
   jmp ff_and_return
 not_aorom:
-
   cmp #MIRRPROBE_H
   bne not_fixed_h
   jmp narrow_discrete
 not_fixed_h:
-
   ; It's either fixed V or Holy Diver.
   ldy #$00
   sty CONSTANT_00
@@ -267,11 +286,13 @@ not_fixed_v:
   lda #MAPPER_HOLYDIVER
   rts
 .endproc
+
 .proc unknown_mapper
   lda #MORSE_M
   ldx #MORSE_I
   ldy #MORSE_R
 .endproc
+
 .proc morsebeep_axy
   sta 1
   stx 2
@@ -294,8 +315,6 @@ loop:
   jsr wait_y_frames
   jmp loop
 .endproc
-
-
 
 ;;
 ; Sets the MMC1 mode (mirroring, PRG bank size, CHR bank size).
@@ -322,6 +341,77 @@ loop:
   sty PPUADDR
   iny
   sty PPUDATA
+  rts
+.endproc
+
+;;
+; Write 0, 1, 2, 3 to NT0, NT1, NT2, NT3
+; Note: These probe bytes correspond to the first four tiles in the CHR pattern table (Space, A, B, C).
+; Because draw_bg later only clears NT0, the values 1, 2, and 3 are left behind
+; in the top-left corners of NT1, NT2, and NT3. In emulators like Mesen, you will
+; see "A", "B", and "C" in those nametables surrounded by power-on junk memory.
+.proc test_4screen_mirroring
+  ldx #$20
+  ldy #$00
+  stx PPUADDR
+  sty PPUADDR
+  sty PPUDATA
+
+  ldx #$24
+  stx PPUADDR
+  sty PPUADDR
+  lda #$01
+  sta PPUDATA
+
+  ldx #$28
+  stx PPUADDR
+  sty PPUADDR
+  lda #$02
+  sta PPUDATA
+
+  ldx #$2C
+  stx PPUADDR
+  sty PPUADDR
+  lda #$03
+  sta PPUDATA
+
+  ; Read back
+  ldx #$20
+  ldy #$00
+  stx PPUADDR
+  sty PPUADDR
+  bit PPUDATA
+  lda PPUDATA
+  bne fail
+
+  ldx #$24
+  stx PPUADDR
+  sty PPUADDR
+  bit PPUDATA
+  lda PPUDATA
+  cmp #$01
+  bne fail
+
+  ldx #$28
+  stx PPUADDR
+  sty PPUADDR
+  bit PPUDATA
+  lda PPUDATA
+  cmp #$02
+  bne fail
+
+  ldx #$2C
+  stx PPUADDR
+  sty PPUADDR
+  bit PPUDATA
+  lda PPUDATA
+  cmp #$03
+  bne fail
+
+  sec
+  rts
+fail:
+  clc
   rts
 .endproc
 
@@ -357,14 +447,47 @@ readloop:
   bne not_unrom180
   lda #MAPPER_UNROM_CRAZY
   jmp ff_and_return
-not_unrom180:
 
+not_unrom180:
   cmp #7
   beq narrow_32k
+
+  ; Test for UNROM-512 (Mapper 30)
+  ; Write bank 1 (16KB).
+  lda #$01
+  sta identity+1      ; bus conflict via identity table
+  lda CUR_BANK-$4000
+  cmp #$07
+  bne not_unrom512
+
+  ; Distinguish Mapper 2 from Mapper 30 (UNROM-512)
+  ; Write 16 to the bank register.
+  lda #16
+  sta identity+16
+  lda CUR_BANK-$4000
+  cmp #67
+  beq is_unrom512
+
+  ; Restore bank 0 for standard UNROM
+  lda #$00
+  sta identity
+  lda #MAPPER_UNROM
+  rts
+
+is_unrom512:
+  ; Restore bank 0 so drivers can be loaded
+  lda #$00
+  sta identity
+  lda #MAPPER_UNROM512
+  rts
+not_unrom512:
+  ; Restore Bank 0 for standard UNROM
+  lda #$00
+  sta CONSTANT_00
+
   lda #MAPPER_UNROM
   rts
 narrow_32k:
-
   ; Distinguish NROM, BNROM, CNROM, CPROM, GNROM
   lda #$FF
   sta CONSTANT_FF
@@ -443,6 +566,7 @@ is_mmc2:
 
   ; At this point the last bank is ready, and the MMC1 driver uses
   ; the last bank to decide whether to use SNROM protection.
+  lda #MAPPER_MMC1
   rts
 surom_fail:
   lda #MORSE_S
@@ -451,6 +575,82 @@ surom_fail:
   jmp morsebeep_axy
 .endproc
 
+.proc is_4screen
+  ; Test for MMC3 (Mapper 4)
+  ; Write PRG bank 1 (8KB) to $8000-$9FFF (command 6)
+  lda #$06
+  sta MMC3_SELECT
+  lda #$01
+  sta MMC3_DATA
+  lda CUR_BANK-$6000
+  cmp #$03
+  bne not_mmc3_4
+  lda #$02
+  sta MMC3_DATA
+  lda CUR_BANK-$6000
+  cmp #$05
+  bne not_mmc3_4
+  ; Lock MMC3 banks to prevent crash
+  lda #6
+  sta MMC3_SELECT
+  lda #$FE
+  sta MMC3_DATA
+  lda #MAPPER_MMC3
+  rts
+
+not_mmc3_4:
+  ; Test for GTROM (Mapper 111)
+  ; GTROM switches 32KB PRG (bits 0-3) and 8KB CHR RAM (bits 4-5) via $5000.
+  ; Test PRG banking instead of CHR banking since it's more robust.
+
+  lda #$00
+  sta $5000
+  lda CUR_BANK-$4000
+  pha
+
+  lda #$01
+  sta $5000
+  lda CUR_BANK-$4000
+  sta 0
+
+  ; Restore PRG bank 15 (last bank) to avoid crashing
+  lda #$0F
+  sta $5000
+
+  pla
+  cmp 0
+  beq not_gtrom_4
+
+  ; It's GTROM!
+  lda #'4'
+  sta mirror_type
+  lda #MAPPER_GTROM
+  rts
+
+not_gtrom_4:
+  ; Test for UNROM-512 (Mapper 30) 4-screen variant
+  lda #$01
+  sta identity+1      ; bus conflict via identity table
+  lda CUR_BANK-$4000
+  cmp #$07
+  bne not_unrom512_4
+  ; Write bank 2 to double-check
+  lda #$02
+  sta identity+2      ; bus conflict via identity table
+  lda CUR_BANK-$4000
+  cmp #$0B
+  bne not_unrom512_4
+  ; Restore bank 0 so drivers can be loaded
+  lda #$00
+  sta identity         ; bus conflict via identity table
+  lda #MAPPER_UNROM512
+  rts
+
+not_unrom512_4:
+  ; Fallback if unknown 4-screen mapper
+  lda #MAPPER_UNKNOWN
+  rts
+.endproc
 
 .segment "RODATA"
 CONSTANT_F0: .byte $F0

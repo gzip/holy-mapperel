@@ -2,15 +2,15 @@
 ; Holy Mapperel: NES cartridge board test
 ;
 ; Copyright 2013-2017 Damian Yerrick
-; 
+;
 ; This software is provided 'as-is', without any express or implied
 ; warranty.  In no event will the authors be held liable for any damages
 ; arising from the use of this software.
-; 
+;
 ; Permission is granted to anyone to use this software for any purpose,
 ; including commercial applications, and to alter it and redistribute it
 ; freely, subject to the following restrictions:
-; 
+;
 ; 1. The origin of this software must not be misrepresented; you must not
 ;    claim that you wrote the original software. If you use this software
 ;    in a product, an acknowledgment in the product documentation would be
@@ -39,6 +39,7 @@ cur_keys:       .res 2
 new_keys:       .res 2
 oam_used:       .res 1
 cur_mapper:     .res 1
+mirror_type:    .res 1
 txt_y:          .res 1
 last_prg_bank:  .res 1
 
@@ -100,7 +101,7 @@ identity:
 vwait1:
   bit PPUSTATUS   ; It takes one full frame for the PPU to become
   bpl vwait1      ; stable.  Wait for the first frame's vblank.
-  
+
   ; Burn 29700 cycles by clearing OAM and the zero page and copying
   ; any code that must run in RAM to RAM.
   ldy #0
@@ -136,11 +137,11 @@ clear_zp:
   sta $00,x
   inx
   bne clear_zp
-  
+
 vwait2:
   bit PPUSTATUS  ; After the second vblank, we know the PPU has
   bpl vwait2     ; fully stabilized.
-  
+
   jsr detect_mapper
   sta cur_mapper
   jsr ensure_c0_ff
@@ -241,7 +242,7 @@ found_mapper_name:
   lda (0),y
   cmp #'*'
   bne skip_letters
-  
+
   ; If the board name wasn't found, then use the generic name with *
   lda 2
   bmi skip_letters
@@ -249,7 +250,7 @@ found_mapper_name:
   lda 3
   bmi :+
   sta PPUDATA
-:  
+:
   ldy #2
   bne mapper_name_have_y
 skip_letters:
@@ -353,6 +354,14 @@ skip_print_wram:
   jsr puts
 
   jsr start_line
+  lda #>msg_mirroring
+  ldy #<msg_mirroring
+  jsr puts
+  lda mirror_type
+  and #$3F
+  sta PPUDATA
+
+  jsr start_line
   lda #>msg_detailed
   ldy #<msg_detailed
   jsr puts
@@ -452,13 +461,13 @@ forever:
 vw3:
   cmp nmis
   beq vw3
-  
+
   ; Copy the display list from main RAM to the PPU
   lda #0
   sta OAMADDR
   lda #>OAM
   sta OAM_DMA
-  
+
   ; Turn the screen on
   ldx #0
   ldy #0
@@ -523,15 +532,15 @@ floorloop1:
   sta PPUDATA
   dex
   bne floorloop1
-  
+
   lda #$21
   sta 3
-  lda #$82
+  lda #$C2
   sta 2
   lda #>msg_todo
   ldy #<msg_todo
   jsr smallchr_puts_multiline
-  
+
   rts
 .endproc
 
@@ -624,6 +633,10 @@ mapper_msgs:
   .addr msg_unrom
   .byte MAPPER_UNROM_CRAZY
   .addr msg_unrom_crazy
+  .byte MAPPER_UNROM512
+  .addr msg_unrom512
+  .byte MAPPER_GTROM
+  .addr msg_gtrom
 last_mapper_msg = * - mapper_msgs
 
 msg_cnrom:       .byte "C"
@@ -636,6 +649,8 @@ msg_bnrom:       .byte "BNROM",0
 msg_colordreams: .byte "COLOR DREAMS",0
 msg_unrom:       .byte "U*ROM",0
 msg_unrom_crazy: .byte "U*ROM (7408)",0
+msg_unrom512:    .byte "UNROM-512",0
+msg_gtrom:       .byte "GTROM",0
 msg_a53:         .byte "INL-ROM (A53)",0
 msg_mmc1:        .byte "S*ROM (MMC1)",0
 msg_mmc2:        .byte "PNROM (MMC2)",0
@@ -646,20 +661,21 @@ msg_mmc4:        .byte "F*ROM (MMC4)",0
 k_prg_rom:       .byte "K PRG ROM",0
 k_prg_ram:       .byte "K "
 msg_prg_ram:     .byte "PRG RAM",0
-msg_missing:     .byte " MISSING",0
+msg_missing:     .byte " NOT PRESENT",0
 k_chr:           .byte "K CHR R",0
 msg_battery:     .byte " + BATTERY",0
 msg_ok:          .byte " OK",0
 msg_problem:     .byte " PROBLEM",0
 msg_detailed:    .byte "DETAILED TEST RESULT: ",0
-msg_flashid:     .byte "FLASH ID RESULT:",0
+msg_mirroring:   .byte "MIRRORING: ",0
+msg_flashid:     .byte "FLASH ID RESULT: ",0
 
 msg_todo:
   .byte "HOLY MAPPEREL",LF
   .byte "TOOL FOR TESTING FAMICOM/NES",LF
   .byte "CARTRIDGE BOARD ASSEMBLY",LF
   .incbin "../obj/nes/last-commit"
-  .byte LF
-  .byte "COPR. 2013,2022",LF
-  .byte "DAMIAN YERRICK",LF
-  .byte "            WWW.PINEIGHT.COM",0
+  .byte LF,LF
+  .byte "(C) 2013-2026 DAMIAN YERRICK",LF
+  .byte "            WWW.PINEIGHT.COM",LF
+  .byte "    WWW.INFINITENESLIVES.COM",0

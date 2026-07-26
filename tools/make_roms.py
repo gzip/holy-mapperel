@@ -40,9 +40,11 @@ MAPPER_MMC4 = 10
 MAPPER_COLORDREAMS = 11
 MAPPER_CPROM = 13
 MAPPER_A53 = 28
+MAPPER_UNROM512 = 30
 MAPPER_BNROM = 34
 MAPPER_GNROM = 66
 MAPPER_FME7 = 69
+MAPPER_GTROM = 111
 MAPPER_HOLYDIVER = (78, 3)
 MAPPER_MMC3_TLSROM = 118
 MAPPER_MMC3_TQROM = 119
@@ -95,7 +97,7 @@ def format_memsize(size):
     return "%dM" % (size // 1048576)
 
 def make_nes2_header(prgsize, chrsize=0, mapper=0, mirroring=INES_MIRRV,
-                     prgramsize=0, chrramsize=0, tvsystem=0):
+                     prgramsize=0, chrramsize=0, tvsystem=0, force_battery=False):
     """Make a byte string representing a 16-byte NES 2.0 header.
 
 prgsize -- Size of PRG ROM in bytes (multiple of 16384)
@@ -137,11 +139,15 @@ chrramsize -- Sizes of CHR RAM as tuple (not battery-backed, battery-backed)
         raise ValueError("mirroring must be 0-3, not %d" % tvsystem)
     prgramsize = make_nes2_ramsizes(*prgramsize)
     chrramsize = make_nes2_ramsizes(*chrramsize)
-    battery = 2 if ((chrramsize | prgramsize) & 0xF0) else 0
+    battery = 2 if (((chrramsize | prgramsize) & 0xF0) or force_battery) else 0
 
     header = bytearray(b"NES\x1a")
     header.append(prgsize & 0x0FF)
     header.append(chrsize & 0x0FF)
+
+    if mapper == 30 and (mirroring & 8):
+        mirroring |= 1
+
     header.append(mirroring | battery | ((mapper & 0x00F) << 4))
     header.append((mapper & 0x0F0) | 0x08)
 
@@ -239,6 +245,9 @@ romspecs_oneofeach = [
     (131072,      0, MAPPER_HOLYDIVER,   0, 0, 32768),
     (524288,      0, MAPPER_A53,         0, 0, 32768),
     ( 1<<20,      0, MAPPER_A53,         0, 0, 32768),
+    (524288,      0, MAPPER_UNROM512,    INES_MIRRV, 0, 8192),
+    (524288,      0, (MAPPER_UNROM512, 1), INES_MIRR4, 0, 8192),
+    (524288,      0, MAPPER_GTROM,       INES_MIRR4, 0, 16384),
 ]
 
 romspecs = romspecs_oneofeach
@@ -265,18 +274,15 @@ def handle_single_rom(prgsize, chrsize, mapper, mirror,
                 '_C%s' % format_memsize(chrsize) if chrsize else '',
                 '_CR%s' % format_memsize(chrramsize) if chrramsize else '',
                 '_%s' % filename_mirroring[mirror & 0x09]
-                if mapper not in switchable_mirror_mappers
+                if (mapper not in switchable_mirror_mappers) or (mirror == INES_MIRR4)
                 else '',
                 '_W%s' % format_memsize(prgramsize[0]) if prgramsize[0] else '',
                 '_S%s' % format_memsize(prgramsize[1]) if prgramsize[1] else '',
                 '.nes']
     filename = ''.join(filename)
-##    chrramsize = (8192 if mapper == MAPPER_MMC3_TQROM
-##                  else 0 if chrsize > 0
-##                  else 16384 if mapper == MAPPER_CPROM
-##                  else 8192)
+    force_bat = True if (isinstance(mapper, tuple) and mapper[0] == MAPPER_UNROM512 and mapper[1] == 1) else False
     header = make_nes2_header(prgsize, chrsize, mapper, mirror,
-                              prgramsize, chrramsize)
+                              prgramsize, chrramsize, force_battery=force_bat)
 
     # SUROM/SXROM can't guarantee PRG A18 until CHR is set up
     # so duplicate the test in all 256K outer banks
@@ -294,15 +300,18 @@ def handle_single_rom(prgsize, chrsize, mapper, mirror,
         prgrom[i - 128:i] = wrong_bank
     del wrong_bank
 
-    # Emulators commonly boot AOROM, BNROM, GNROM, and
+    # Emulators commonly boot AOROM, BNROM, GNROM, GTROM, and
     # UNROM (Crazy Climber) to the first bank.  There's a stub
-    # in $BF6C that tries switching to the last bank.
+    # that switches to the last bank or gracefully crashes.
     # Put it in all 16K banks.
-    gnromstub = primary_prgrom[0x3F6C:0x3F80]
+    stub_addr = 0x3F60
+    stub_len = 32
+
+    stub = primary_prgrom[stub_addr : stub_addr + stub_len]
     for i in range(0, dupli_prgsize, 16384):
-        prgrom[i + 0x3F6C:i + 0x3F80] = gnromstub
+        prgrom[i + stub_addr : i + stub_addr + stub_len] = stub
     for i in range(0, dupli_prgsize - 16384, 16384):
-        prgrom[i + 0x3FFC] = 0x6C
+        prgrom[i + 0x3FFC] = stub_addr & 0xFF
         prgrom[i + 0x3FFD] = 0xBF
 
     # SUROM/SXROM duplication

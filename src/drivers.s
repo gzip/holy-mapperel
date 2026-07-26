@@ -186,6 +186,77 @@ have_prg_result:
 .endproc
 
 
+; GTROM ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; $8000-$FFFF: 32K PRG ROM
+; CHR RAM banking at $5000 (Bits 5-4)
+; PRG ROM banking at $5000 (Bits 3-0)
+
+.segment "DRIVER_GTROM"
+  rts  ; GTROM doesn't support PRG RAM
+  nop
+  nop
+  jmp gtrom_set_chr_8k
+.proc gtrom_test_mapper
+addrlo = 0
+addrhi = 1
+cur_banktag = 2
+  ; Read all PRG ROM bank tags through each PRG ROM window
+  lda #<CUR_BANK
+  sta addrlo
+  lda CUR_BANK
+  sta cur_banktag
+loop:
+  lda #$FF
+  sta CONSTANT_FF
+  lda cur_banktag
+  lsr a
+  lsr a
+  lsr a
+  sta $5000
+  lda cur_banktag
+  asl a
+  asl a
+  asl a
+  asl a
+  ora #$8F & >CUR_BANK
+  sta addrhi
+  ldy #0
+  lda (addrlo),y
+  cmp cur_banktag
+  bne prg_failure
+  dec cur_banktag
+  bpl loop
+
+  lda #0
+  beq have_prg_result
+prg_failure:
+  lda #MAPTEST_PRGWIN1
+have_prg_result:
+  pha
+  ; Switch back to bank 15 to ensure IS_LAST_BANK logic works
+  lda #$0F
+  sta $5000
+  pla
+  sta driver_prg_result
+
+  ; CHR test
+  ldy #0
+  sty driver_chr_result
+
+  lda #$FF
+  sta CONSTANT_FF
+  rtslast
+.endproc
+.proc gtrom_set_chr_8k
+  asl a
+  asl a
+  asl a
+  asl a
+  ora #$0F
+  sta $5000
+  rts
+.endproc
+
 ; UNROM (both normal and Crazy Climber versions) and Holy Diver ;;;;;
 
 .segment "DRIVER_UNROM"
@@ -268,7 +339,7 @@ not_crazy2:
 
 ; Loading a driver ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-.import __DRIVER_GNROM_LOAD__, __DRIVER_BNROM_LOAD__
+.import __DRIVER_GNROM_LOAD__, __DRIVER_BNROM_LOAD__, __DRIVER_GTROM_LOAD__
 .import __DRIVER_MMC1_LOAD__, __DRIVER_MMC3_LOAD__
 .import __DRIVER_FME7_LOAD__, __DRIVER_UNROM_LOAD__
 .import __DRIVER_A53_LOAD__, __DRIVER_MMC2_LOAD__
@@ -347,6 +418,10 @@ mapper_driver_list:
   .addr __DRIVER_UNROM_LOAD__
   .byte MAPPER_A53
   .addr __DRIVER_A53_LOAD__
+  .byte MAPPER_UNROM512
+  .addr __DRIVER_UNROM_LOAD__
+  .byte MAPPER_GTROM
+  .addr __DRIVER_GTROM_LOAD__
   .byte MAPPER_MMC2
   .addr __DRIVER_MMC2_LOAD__
   .byte MAPPER_MMC4

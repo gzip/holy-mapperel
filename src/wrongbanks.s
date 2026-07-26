@@ -41,11 +41,13 @@ TWOCELLS = 28
 ; the first bank.  ($8000-$BFFF is in both the first and last banks.)
 ; May need more testing to determine whether the stub needs to be
 ; placed in all 16K banks.
-.segment "GNROMSTUB"
-.proc gnromstub
+.segment "RESETSTUB"
+.proc resetstub
   sei
+  lda #$0F
+  sta $5000         ; GTROM bank switch (ignored by other mappers)
   lda #$FF
-  sta CONSTANT_FF
+  sta CONSTANT_FF   ; GNROM/BNROM/AOROM/UNROM bank switch (ignored by GTROM)
   lda IS_LAST_BANK
   beq isnt_last_bank
   jmp reset
@@ -148,4 +150,3 @@ CONSTANT_FF:  .byt $FF
 CUR_BANK:     .byt $07
 IS_LAST_BANK: .byt $01
   .addr wrongbank_nmi, reset, irq_handler
-

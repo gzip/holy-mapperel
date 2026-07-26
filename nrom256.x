@@ -14,7 +14,9 @@ MEMORY {
   RAM:    start = $0300, size = $0100, type = rw;
   RAM0:   start = $0400, size = $0400, type = rw;
 
-  # individual drivers
+  # Each driver needs its own RAM memory definition. If two driver segments
+  # share the same RAM definition, the linker will place them sequentially
+  # (shifting run addresses) instead of overlapping them at $0400.
   RAM1:   start = $0400, size = $0300, type = rw;
   RAM2:   start = $0400, size = $0300, type = rw;
   RAM3:   start = $0400, size = $0300, type = rw;
@@ -23,6 +25,7 @@ MEMORY {
   RAM6:   start = $0400, size = $0300, type = rw;
   RAM7:   start = $0400, size = $0300, type = rw;
   RAM8:   start = $0400, size = $0300, type = rw;
+  RAM9:   start = $0400, size = $0300, type = rw;
 
   # The ROM is assumed to be divided into 4K banks.  The ROMxL memory
   # areas ensure that the last 128 bytes of each 4K bank are unused
@@ -63,7 +66,7 @@ SEGMENTS {
   # is always available.
   CODE:     load = ROMC, type = ro, align = $100;
   RODATA:   load = ROMD, type = ro, align = $100;
-  
+
   # MMC3 and FME-7 fix $E000-$FFFF even if $C000-$DFFF is swapped
   # out.  Their tests can safely run from $E000-$FFFF.
   ECODE:    load = ROME, type = ro, align = $100, optional=yes;
@@ -72,7 +75,8 @@ SEGMENTS {
   # stored below the $C000 watermark
   DRIVER_GNROM: load=ROMB, run=RAM1, type=ro, define=yes;
   DRIVER_BNROM: load=ROMB, run=RAM2, type=ro, define=yes;
-  GNROMSTUB:    load=ROMB, type=ro, start=$BF6C;
+  DRIVER_GTROM: load=ROMB, run=RAM9, type=ro, define=yes;
+  RESETSTUB:    load=ROMB, type=ro, start=$BF60;
 
   # These drivers are bigger
   DRIVER_A53: load=ROMD, run=RAM3, type=ro, define=yes;
@@ -90,4 +94,3 @@ SEGMENTS {
 FILES {
   %O: format = bin;
 }
-
