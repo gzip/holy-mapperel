@@ -25,7 +25,7 @@ objlist = \
 
 AS65 = ca65
 LD65 = ld65
-CFLAGS65 = 
+CFLAGS65 =
 objdir = obj/nes
 srcdir = src
 imgdir = tilesets
@@ -53,13 +53,13 @@ DOTEXE=.exe
 PY=py
 else
 DOTEXE=
-PY=python3
+PY=python
 endif
 
 .PHONY: run debug clean dist zip 7z $(objdir)/last-commit-now
 
 run: $(title).nes
-	$(EMU) $<
+	@if command -v $(EMU) >/dev/null 2>&1; then $(EMU) $<; else echo "Emulator $(EMU) not found"; fi
 debug: $(title).nes
 	$(DEBUGEMU) $<
 
@@ -71,7 +71,7 @@ $(title).nes: $(testconfig) $(primary) makefile
 
 M%.nes: $(primary) tools/make_roms.py
 	mkdir -p testroms
-	cd tools && ./make_roms.py
+	cd tools && $(PY) make_roms.py
 
 # Rule to create or update the distribution zipfile by adding all
 # files listed in zip.in.  Actually the zipfile depends on every
