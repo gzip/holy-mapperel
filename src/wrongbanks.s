@@ -2,15 +2,15 @@
 ; First stage bootloader for Holy Mapperel
 ;
 ; Copyright 2013-2017 Damian Yerrick
-; 
+;
 ; This software is provided 'as-is', without any express or implied
 ; warranty.  In no event will the authors be held liable for any damages
 ; arising from the use of this software.
-; 
+;
 ; Permission is granted to anyone to use this software for any purpose,
 ; including commercial applications, and to alter it and redistribute it
 ; freely, subject to the following restrictions:
-; 
+;
 ; 1. The origin of this software must not be misrepresented; you must not
 ;    claim that you wrote the original software. If you use this software
 ;    in a product, an acknowledgment in the product documentation would be
@@ -31,7 +31,7 @@
 ; TWOCELLS is the number of frames in a dot and the space after it.
 ; Because a standard word is 50 cells (25*TWOCELLS), and the NTSC NES
 ; runs 60.1 fps, the words per minute value is 144.24/TWOCELLS.
-TWOCELLS = 7
+TWOCELLS = 28
 
 ; Morse letters with 0=dot, 1=dash, and 1000...=terminate
 
@@ -108,7 +108,7 @@ is_dot:
   sta $400b
   jsr wait_y_frames
 
-  ; Turn off tone 
+  ; Turn off tone
   sty $4008
   sty $400b
   lda #$80
