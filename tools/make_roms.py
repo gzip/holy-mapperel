@@ -145,11 +145,6 @@ chrramsize -- Sizes of CHR RAM as tuple (not battery-backed, battery-backed)
     header.append(prgsize & 0x0FF)
     header.append(chrsize & 0x0FF)
 
-    # Kludge for wonky config
-    # https://www.nesdev.org/wiki/UNROM_512#Nametable_Configuration
-    if mapper == 30 and (mirroring & 8):
-        mirroring |= 1
-
     header.append(mirroring | battery | ((mapper & 0x00F) << 4))
     header.append((mapper & 0x0F0) | 0x08)
 
@@ -250,8 +245,11 @@ romspecs_oneofeach = [
     ( 1<<20,      0, MAPPER_A53,         0, 0, 32768),
     (524288,      0, MAPPER_UNROM512,    INES_MIRRV, 0, 32768),
     (262144,      0, MAPPER_UNROM512,    INES_MIRRH, 0, 32768),
+    # Mapper 30 specifies Nametable Configuration via bits 0 and 3
+    # 8 = 1-Screen Switchable, 9 = 4-Screen VRAM
     (524288,      0, MAPPER_UNROM512,    INES_MIRR4, 0, 32768),
-    (524288,      0, MAPPER_GTROM,       INES_MIRR4, 0, 16384),
+    (524288,      0, MAPPER_UNROM512,    INES_MIRR4+1, 0, 32768),
+    (524288,      0, MAPPER_GTROM,       INES_MIRR4+1, 0, 16384),
 ]
 
 romspecs = romspecs_oneofeach
@@ -263,7 +261,7 @@ def log_xrange(start=1, end=None, step=2):
         yield start
         start = start * step
 
-filename_mirroring = {0: 'H', 1: 'V', 8: '4', 9: '4V'}
+filename_mirroring = {0: 'H', 1: 'V', 8: '1', 9: '4'}
 switchable_mirror_mappers = {
     MAPPER_MMC1, MAPPER_MMC2, MAPPER_MMC3, MAPPER_MMC3_TQROM,
     MAPPER_MMC3_TLSROM, MAPPER_MMC4, MAPPER_AOROM, MAPPER_HOLYDIVER,
@@ -277,9 +275,7 @@ def handle_single_rom(prgsize, chrsize, mapper, mirror,
                 '_P', format_memsize(prgsize),
                 '_C%s' % format_memsize(chrsize) if chrsize else '',
                 '_CR%s' % format_memsize(chrramsize) if chrramsize else '',
-                '_%s' % filename_mirroring[mirror & 0x09]
-                if (mapper not in switchable_mirror_mappers) or (mirror == INES_MIRR4)
-                else '',
+                '_%s' % filename_mirroring[mirror & 0x09] if (mapper not in switchable_mirror_mappers) else '',
                 '_W%s' % format_memsize(prgramsize[0]) if prgramsize[0] else '',
                 '_S%s' % format_memsize(prgramsize[1]) if prgramsize[1] else '',
                 '.nes']
