@@ -2,15 +2,15 @@
 ; Mapper detection for Holy Mapperel
 ;
 ; Copyright 2013-2017 Damian Yerrick
-; 
+;
 ; This software is provided 'as-is', without any express or implied
 ; warranty.  In no event will the authors be held liable for any damages
 ; arising from the use of this software.
-; 
+;
 ; Permission is granted to anyone to use this software for any purpose,
 ; including commercial applications, and to alter it and redistribute it
 ; freely, subject to the following restrictions:
-; 
+;
 ; 1. The origin of this software must not be misrepresented; you must not
 ;    claim that you wrote the original software. If you use this software
 ;    in a product, an acknowledgment in the product documentation would be
@@ -55,7 +55,7 @@ MIRRPROBE_HINVERT = %1100  ; used by TxSROM detection
   lda #A53_OUTERBANK
   sta A53_SELECT
   ; force last outer bank on A53 or reset MMC1
-  lda #$FF  
+  lda #$FF
   sta A53_DATA
   ; and lock this in
   lda #A53_CHRBANK
@@ -110,7 +110,7 @@ save_init_mirr:
   cmp #MIRRPROBE_1
   bne not_mmc1
   jmp finish_init_mmc1
-  
+
 not_mmc1:
   ; Detect FME-7 and MMC3 at the same time.  The FME-7 data port is
   ; at the same address as the MMC3 mirroring port, and the same
@@ -128,9 +128,9 @@ not_mmc1:
   jsr read_mirror_probe_vals
   cmp #MIRRPROBE_H
   bne not_fme7_mmc3
-  
+
   ; MMC3 treats the FME-7 value meaning "single screen from CIRAM
-  ; $000" as vertical mirroring.  
+  ; $000" as vertical mirroring.
   lda #FME7_MIRR0
   sta FME7_DATA
   jsr read_mirror_probe_vals
@@ -177,9 +177,9 @@ not_fme7_mmc3:
   lda #$FE
   sta MMC3_DATA
   lda #MAPPER_MMC3_TLSROM
-  rts  
+  rts
 not_tlsrom:
-  
+
   ; Look for MMC2/MMC4 (Punch-Out!!, Fire Emblem, Famicom Wars)
   lda #FME7_MIRRV
   sta MMC2_MIRR
@@ -243,7 +243,7 @@ not_a53:
   jsr read_mirror_probe_vals
   cmp #MIRRPROBE_0
   bne unknown_mapper
-  
+
   ; Mapper 78 has two mirroring variants, each of which has been
   ; given its own NES 2.0 submapper.
   ; 78.3: Holy Diver (mapper-controlled H/V mirroring)
@@ -468,25 +468,49 @@ not_unrom180:
   cmp #67
   beq is_unrom512
 
-  ; Restore bank 0 for standard UNROM
+  ; Standard PRG checks fail to distinguish Mapper 30 if 256K,
+  ; so test if CHR RAM banking is supported (bits 5-6).
+  ; First, write $33 to CHR Bank 0
   lda #$00
   sta identity
-  lda #MAPPER_UNROM
-  rts
+  sta PPUADDR
+  sta PPUADDR
+  lda #$33
+  sta PPUDATA
+
+  ; Then, write $CC to CHR Bank 1
+  lda #%00100000
+  sta identity+$20 ; (bit 5 = 1, so $20)
+  lda #$00
+  sta PPUADDR
+  sta PPUADDR
+  lda #$CC
+  sta PPUDATA
+
+  ; Finally, switch back to CHR Bank 0 and read
+  lda #$00
+  sta identity
+  sta PPUADDR
+  sta PPUADDR
+  lda PPUDATA ; dummy read
+  lda PPUDATA
+
+  ; If we read back $33, CHR Bank 0 was not overwritten, meaning it's Mapper 30
+  cmp #$33
+  bne not_unrom512
 
 is_unrom512:
   ; Restore bank 0 so drivers can be loaded
-  lda #$00
-  sta identity
   lda #MAPPER_UNROM512
   rts
+
 not_unrom512:
   ; Restore Bank 0 for standard UNROM
   lda #$00
   sta CONSTANT_00
-
   lda #MAPPER_UNROM
   rts
+
 narrow_32k:
   ; Distinguish NROM, BNROM, CNROM, CPROM, GNROM
   lda #$FF
