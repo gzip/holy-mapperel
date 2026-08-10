@@ -261,11 +261,20 @@ not_a53:
   sta identity+$F0  ; UCC: page 0; AOROM: page 1
   jsr read_mirror_probe_vals
   cmp #MIRRPROBE_1
-  beq is_aorom
+  beq verify_aorom
   jmp unknown_mapper
+verify_aorom:
+  ; Distinguish AOROM (32K PRG switch) from UNROM-512 (16K PRG switch + fixed last bank)
+  ldy #$00
+  sty identity
+  ldy IS_LAST_BANK
+  beq is_aorom
+  jmp narrow_discrete
+
 is_aorom:
   lda #MAPPER_AOROM
   jmp ff_and_return
+
 not_aorom:
   cmp #MIRRPROBE_H
   bne not_fixed_h
@@ -501,6 +510,8 @@ not_unrom180:
 
 is_unrom512:
   ; Restore bank 0 so drivers can be loaded
+  lda #$00
+  sta identity
   lda #MAPPER_UNROM512
   rts
 
