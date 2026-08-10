@@ -78,7 +78,7 @@ def make_nes2_ramsize(size):
     if size == 0:
         return 0
     return max(1, log2(size - 1) - 5)
-    
+
 def make_nes2_ramsizes(unbacked, backed):
     unbacked = make_nes2_ramsize(unbacked)
     backed = make_nes2_ramsize(backed)
@@ -97,7 +97,7 @@ def format_memsize(size):
     return "%dM" % (size // 1048576)
 
 def make_nes2_header(prgsize, chrsize=0, mapper=0, mirroring=INES_MIRRV,
-                     prgramsize=0, chrramsize=0, tvsystem=0, force_battery=False):
+                     prgramsize=0, chrramsize=0, tvsystem=0):
     """Make a byte string representing a 16-byte NES 2.0 header.
 
 prgsize -- Size of PRG ROM in bytes (multiple of 16384)
@@ -139,12 +139,14 @@ chrramsize -- Sizes of CHR RAM as tuple (not battery-backed, battery-backed)
         raise ValueError("mirroring must be 0-3, not %d" % tvsystem)
     prgramsize = make_nes2_ramsizes(*prgramsize)
     chrramsize = make_nes2_ramsizes(*chrramsize)
-    battery = 2 if (((chrramsize | prgramsize) & 0xF0) or force_battery) else 0
+    battery = 2 if ((chrramsize | prgramsize) & 0xF0) else 0
 
     header = bytearray(b"NES\x1a")
     header.append(prgsize & 0x0FF)
     header.append(chrsize & 0x0FF)
 
+    # Kludge for wonky config
+    # https://www.nesdev.org/wiki/UNROM_512#Nametable_Configuration
     if mapper == 30 and (mirroring & 8):
         mirroring |= 1
 
@@ -223,6 +225,7 @@ romspecs_oneofeach = [
     ( 32768,  32768, MAPPER_CNROM,       INES_MIRRH, 0, 0),
     ( 32768,      0, MAPPER_NROM,        INES_MIRRV, 0, 32768),
     (131072,      0, MAPPER_UNROM,       INES_MIRRV, 0, 8192),
+    (262144,      0, MAPPER_UNROM,       INES_MIRRH, 0, 8192),
     (131072,      0, MAPPER_UNROM_CRAZY, INES_MIRRH, 0, 8192),
     (131072,      0, MAPPER_AOROM,       0, 0, 8192),
     (131072,      0, MAPPER_BNROM,       INES_MIRRH, 0, 8192),
@@ -245,8 +248,9 @@ romspecs_oneofeach = [
     (131072,      0, MAPPER_HOLYDIVER,   0, 0, 32768),
     (524288,      0, MAPPER_A53,         0, 0, 32768),
     ( 1<<20,      0, MAPPER_A53,         0, 0, 32768),
-    (524288,      0, MAPPER_UNROM512,    INES_MIRRV, 0, 8192),
-    (524288,      0, (MAPPER_UNROM512, 1), INES_MIRR4, 0, 8192),
+    (524288,      0, MAPPER_UNROM512,    INES_MIRRV, 0, 32768),
+    (262144,      0, MAPPER_UNROM512,    INES_MIRRH, 0, 32768),
+    (524288,      0, MAPPER_UNROM512,    INES_MIRR4, 0, 32768),
     (524288,      0, MAPPER_GTROM,       INES_MIRR4, 0, 16384),
 ]
 
@@ -280,9 +284,8 @@ def handle_single_rom(prgsize, chrsize, mapper, mirror,
                 '_S%s' % format_memsize(prgramsize[1]) if prgramsize[1] else '',
                 '.nes']
     filename = ''.join(filename)
-    force_bat = True if (isinstance(mapper, tuple) and mapper[0] == MAPPER_UNROM512 and mapper[1] == 1) else False
     header = make_nes2_header(prgsize, chrsize, mapper, mirror,
-                              prgramsize, chrramsize, force_battery=force_bat)
+                              prgramsize, chrramsize)
 
     # SUROM/SXROM can't guarantee PRG A18 until CHR is set up
     # so duplicate the test in all 256K outer banks
@@ -353,7 +356,7 @@ def expand_romspec(prgsizes, chrsizes, mapper, mirrors, ramsizes, chrramsizes):
                 for spec in (set([(sz, 0), (0, sz)])
                              if not isinstance(sz, Sequence)
                              else (sz,)))
-    
+
     return product(log_xrange(*prgsizes),
                    log_xrange(*chrsizes) if chrsizes[0] else (0,),
                    (mapper,), mirrors, ramsizes, chrramsizes)
@@ -369,7 +372,7 @@ def main():
         infp.read(16)
         primary_prgrom = infp.read(32768)
         primary_chrrom = infp.read(8192)
-        
+
 ##    h = make_nes2_header(262144, 131072, MAPPER_MMC3, INES_MIRRV,
 ##                         (0, 8192), 0, INES_NTSC)
 ##    print(" ".join("%02x" % c for c in h))
