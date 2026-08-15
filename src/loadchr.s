@@ -2,15 +2,15 @@
 ; CHR ROM/RAM test for Holy Mapperel
 ;
 ; Copyright 2013-2017 Damian Yerrick
-; 
+;
 ; This software is provided 'as-is', without any express or implied
 ; warranty.  In no event will the authors be held liable for any damages
 ; arising from the use of this software.
-; 
+;
 ; Permission is granted to anyone to use this software for any purpose,
 ; including commercial applications, and to alter it and redistribute it
 ; freely, subject to the following restrictions:
-; 
+;
 ; 1. The origin of this software must not be misrepresented; you must not
 ;    claim that you wrote the original software. If you use this software
 ;    in a product, an acknowledgment in the product documentation would be
@@ -31,7 +31,7 @@ chr_test_result:  .res 1
 .proc detect_chrrom
   lda #$00
   jsr driver_load_chr_8k
-  
+
   ; Attempt to invert the value in $00
   ldy #$00
   sty PPUADDR
@@ -286,27 +286,73 @@ bail:
 ; puts the number of 8K banks minus one in last_chr_bank.
 .proc get_chr_size
   lda is_chrrom
-  bne skip_writing
+  beq is_chr_ram
+  jmp is_chr_rom
 
+is_chr_ram:
+  ; 1. Write $F8 tag to all banks 31 down to 0
   lda #$1F
   sta 8
-:
+write_f8_loop:
   lda 8
   jsr driver_load_chr_8k
-  lda 8
-  asl a
-  asl a
-  asl a
+  lda #$F8
   jsr write_chr_bank_tags
   dec 8
-  bpl :-
-skip_writing:
+  bpl write_f8_loop
 
+  ; 2. Write $00 tag to Bank 0
+  lda #0
+  jsr driver_load_chr_8k
+  lda #0
+  jsr write_chr_bank_tags
+
+  ; Verify Bank 0 was written successfully
+  jsr read_chr_bank_tags
+  cpx #0
+  bne cbt_error
+
+  ; 3. Find the first bank that wraps to Bank 0 (reads $00) or fails
+  lda #1
+  sta 8
+check_loop:
+  lda 8
+  jsr driver_load_chr_8k
+  jsr read_chr_bank_tags
+  cpx #0
+  bne found_wrap  ; Read failed (Open Bus). End of RAM!
+
+  and #$F8        ; Mask out the 3-bit sub-tag index
+  beq found_wrap  ; Wrapped to Bank 0!
+
+  inc 8
+  lda 8
+  cmp #32
+  bcc check_loop
+
+  ; If we reached 32 without wrapping, size is 32 banks
+  lda #32
+  sta 8
+
+found_wrap:
+  ; '8' contains the number of 8KB banks.
+  ; last_chr_bank should be '8' - 1
+  lda 8
+  sec
+  sbc #1
+  sta last_chr_bank
+  rts
+
+is_chr_rom:
+  ; For CHR ROM, read the pre-baked tags from the last bank
   lda #$1F
   jsr driver_load_chr_8k
   jsr read_chr_bank_tags
   cpx #0
   beq read_back_success
+
+cbt_error:
+  ; If tag read failed, blink Morse Code CBT
   lda #VBLANK_NMI
   sta PPUCTRL
 :
@@ -377,13 +423,13 @@ cur_round = 3
   ldy #7
 roundloop:
   sty cur_round
-  
+
   ; Indicate progress
   tya
   asl a
   eor #$3E
   sta $400C
-  
+
   ; Fill RAM with this bank's fill pattern
   lda last_chr_bank
   sta ptrbank
@@ -414,7 +460,7 @@ fill_byteloop:
   asl a
   eor #$3F
   sta $400C
-  
+
   ; And verify that this pattern was written successfully
   lda last_chr_bank
   sta ptrbank
@@ -440,7 +486,7 @@ read_byteloop:
   bpl read_byteloop
   dec ptrbank
   bpl read_bankloop
-  
+
   ldy cur_round
   dey
   bpl roundloop

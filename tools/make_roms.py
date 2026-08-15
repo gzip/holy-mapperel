@@ -233,7 +233,7 @@ romspecs_oneofeach = [
     (131072, 131072, MAPPER_MMC1,        0, (0, 8192), 0),
     (131072,  65536, MAPPER_MMC2,        INES_MIRRV, 0, 0),
     (262144, 262144, MAPPER_MMC3,        0, 0, 0),
-    (262144,      0, MAPPER_MMC3,        0, 0, 32768),
+    (524288,      0, MAPPER_MMC3,        0, 0, 32768),
     ( 1<<20,      0, MAPPER_MMC3,        0, 0, 32768),  # Oversize; HB only
     (131072,      0, MAPPER_MMC3,        0, 0, (8192, 32768)),
     (131072,  65536, MAPPER_MMC3_TLSROM, 0, 0, 0),
